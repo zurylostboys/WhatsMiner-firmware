@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# Usages:
+#
+# 1. test-readchipid [chip_num]            (Default device: /dev/ttyS2)
+# 2. test-readchipid /dev/ttyS3 [chip_num]
+#
+
+# Detect chip_num
+source /bin/detect-chip-num
+
+# Detect dev_tty (/dev/ttySX)
+source /bin/detect-dev-tty
+
+PLATFORM=$control_board_type
+CHIP_NUM=$chip_num
+
+# Check parameters: <command> [device] [chip_num]
+if [ "$1" -gt 0 ] 2>/dev/null; then
+  DEV=$dev_tty
+  CHIP_NUM=$1
+else
+    if [ "$1" = "" ]; then
+        DEV=$dev_tty
+    else
+        DEV=$1
+        if [ "$2" -gt 0 ] 2>/dev/null; then
+            CHIP_NUM=$2
+        fi
+    fi
+fi
+
+echo "-----------------------------------------------------------------"
+echo "Platform=$PLATFORM Miner=$miner_type"
+echo "hwmon0_name=$hwmon0_name hwmon1_name=$hwmon1_name hwmon2_name=$hwmon2_name"
+echo "gpio_hotplug0=$gpio_hotplug0 gpio_hotplug1=$gpio_hotplug1 gpio_hotplug2=$gpio_hotplug2"
+echo "gpio_en0=$gpio_en0 gpio_en1=$gpio_en1 gpio_en2=$gpio_en2"
+echo "DEV=$DEV CHIP_NUM=$CHIP_NUM"
+echo "-----------------------------------------------------------------"
+
+# Reset all slots
+echo 0 > $gpio_reset0_path
+echo 0 > $gpio_reset1_path
+echo 0 > $gpio_reset2_path
+
+#
+# Start to test, command usage:
+#
+# bitmicro-test <device> <baud> <times> <progress> <command>
+#               <chip_num> <core_num> <fan_pwm_duty> <need_retry> <retry_times>
+# 
+/bin/bitmicro-test $DEV 1000000 1 1 read_chip_model $CHIP_NUM 100 30 1 6

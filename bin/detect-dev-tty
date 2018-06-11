@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# Auto detect dev_tty (/dev/ttySx)
+#
+
+. /etc/cpuinfo_sun8i
+if [ "$CPUINFO_SUN8I" != "" ]; then
+    control_board_type="H3"
+else
+    control_board_type="ZYNQ"
+fi
+
+if [ "$control_board_type" = "H3" ]; then
+    gpio_hotplug0_path="/sys/class/gpio/gpio15/value"
+    gpio_hotplug1_path="/sys/class/gpio/gpio7/value"
+    gpio_hotplug2_path="/sys/class/gpio/gpio8/value"
+
+    gpio_hotplug0=`cat $gpio_hotplug0_path`
+    gpio_hotplug1=`cat $gpio_hotplug1_path`
+    gpio_hotplug2=`cat $gpio_hotplug2_path`
+
+    dev_tty="/dev/ttyS1"
+
+    if [ $gpio_hotplug1 = "0" ]; then
+        dev_tty="/dev/ttyS2"
+    fi
+
+    if [ $gpio_hotplug2 = "0" ]; then
+        dev_tty="/dev/ttyS3"
+    fi
+else
+    gpio_hotplug0_path="/sys/class/gpio/gpio961/value"
+    gpio_hotplug1_path="/sys/class/gpio/gpio963/value"
+    gpio_hotplug2_path="/sys/class/gpio/gpio965/value"
+
+    gpio_hotplug0=`cat $gpio_hotplug0_path`
+    gpio_hotplug1=`cat $gpio_hotplug1_path`
+    gpio_hotplug2=`cat $gpio_hotplug2_path`
+
+    dev_tty="/dev/ttyS2"
+
+    if [ $gpio_hotplug1 = "0" ]; then
+        dev_tty="/dev/ttyS3"
+    fi
+
+    if [ $gpio_hotplug2 = "0" ]; then
+        dev_tty="/dev/ttyS4"
+    fi
+fi
