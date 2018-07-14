@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# Usages:
+#
+# 1. test-sendgoldenwork             (Default device: /dev/ttyS2)
+# 2. test-sendgoldenwork /dev/ttyS3
+#
+
+# Detect chip_num
+source /bin/detect-chip-num
+
+# Detect dev_tty (/dev/ttySX)
+source /bin/detect-dev-tty
+
+PLATFORM=$control_board_type
+CHIP_NUM=$chip_num
+
+if [ "$1" = "" ]; then
+    DEV=$dev_tty
+else
+    DEV=$1
+fi
+
+echo "-----------------------------------------------------------------"
+echo "Platform=$PLATFORM Miner=$miner_type"
+echo "hwmon0_name=$hwmon0_name hwmon1_name=$hwmon1_name hwmon2_name=$hwmon2_name"
+echo "gpio_hotplug0=$gpio_hotplug0 gpio_hotplug1=$gpio_hotplug1 gpio_hotplug2=$gpio_hotplug2"
+echo "gpio_en0=$gpio_en0 gpio_en1=$gpio_en1 gpio_en2=$gpio_en2"
+echo "DEV=$DEV CHIP_NUM=$CHIP_NUM"
+echo "-----------------------------------------------------------------"
+
+# Reset all slots
+echo 0 > $gpio_reset0_path
+echo 0 > $gpio_reset1_path
+echo 0 > $gpio_reset2_path
+
+#
+# Start to test, command usage:
+#
+# bitmicro-test <device> <baud> <times> <progress> <command>
+#               <chip_num> <start_addr> <core_num> <freq> <fan_pwm_duty> <need_preheat> <temp_preheat>
+#
+/bin/bitmicro-test $DEV 1000000 1 1 send_golden_work $CHIP_NUM 0 100 192 70 1 30

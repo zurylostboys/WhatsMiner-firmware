@@ -1,0 +1,12 @@
+#!/bin/sh
+
+if [ "$1" = "" ]; then
+   echo "Usage: set-chip-num <chipnum>"
+   echo "       set-chip-num auto"
+   exit 1
+fi
+
+chmod 644 /etc/config/chipnum
+echo $1 > /etc/config/chipnum
+sync
+echo "Set chip num to $1."
