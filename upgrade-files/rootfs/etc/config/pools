@@ -1,0 +1,14 @@
+
+config pools 'default'
+	option ntp_enable 'global'
+	option ntp_pools '-p 0.pool.ntp.org -p 0.asia.pool.ntp.org -p 0.openwrt.pool.ntp.org -p 0.cn.pool.ntp.org'
+	option pool2url 'stratum+tcp://stratum.bixin.com:3333'
+	option pool2user 'microbtinit.test'
+	option pool2pw '1234'
+	option pool3user 'microbtinit.test'
+	option pool3pw '1234'
+	option pool3url 'stratum+tcp://stratum.bixin.com:443'
+	option pool1url 'stratum+tcp://stratum.f2pool.com:3333'
+	option pool1user 'microbt.init'
+	option pool1pw '1234'
+

@@ -1,0 +1,39 @@
+#!/bin/sh
+#
+# Script to restore factory settings. Called by keyd.
+#
+
+# Restore /etc/config/powers.*
+for default_file in $(find /etc/config -name "powers.default.*")
+do
+    file=`echo $default_file | sed 's/default.//g'`
+    chmod 644 $file
+    echo "Copy $default_file to $file"
+    cp -f $default_file $file
+    chmod 444 $file
+done
+
+# Restore /etc/config/cgminer.*
+for default_file in $(find /etc/config -name "cgminer.default.*")
+do
+    file=`echo $default_file | sed 's/default.//g'`
+    chmod 644 $file
+    echo "Copy $default_file to $file"
+    cp -f $default_file $file
+    chmod 444 $file
+done
+
+# Restore /etc/config/pools
+chmod 644 /etc/config/pools
+cp -f /etc/config/pools.default /etc/config/pools
+
+# Restore /etc/config/network
+chmod 644 /etc/config/network
+cp -f /etc/config/network.default /etc/config/network
+
+# Restore ssh password
+chmod 644 /etc/shadow
+cp -f /etc/shadow.default /etc/shadow
+
+# Call pre-reboot before reboot
+/usr/bin/pre-reboot

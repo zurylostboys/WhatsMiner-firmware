@@ -1,0 +1,7 @@
+#!/bin/sh
+
+CPUINFO_SUN8I=`cat /proc/cpuinfo | grep -iE sun-{0,1}8i`
+
+if [ "$CPUINFO_SUN8I" != "" ]; then
+    export CPUINFO_SUN8I
+fi

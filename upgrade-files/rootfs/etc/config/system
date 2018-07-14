@@ -1,0 +1,18 @@
+
+config system
+	option ttylogin '0'
+	option log_proto 'udp'
+	option conloglevel '8'
+	option cronloglevel '8'
+	option log_size 4096
+	option hostname 'WhatsMiner'
+	option zonename 'Asia/Shanghai'
+	option timezone 'CST-8'
+
+config timeserver 'ntp'
+	option enabled '1'
+	list server '0.cn.pool.ntp.org'
+	list server '0.openwrt.pool.ntp.org'
+	list server '0.asia.pool.ntp.org'
+	list server '0.pool.ntp.org'
+

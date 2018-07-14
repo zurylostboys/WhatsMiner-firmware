@@ -1,0 +1,24 @@
+
+config interface 'loopback'
+	option ifname 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+
+#config interface 'lan'
+#        option ifname 'eth0'
+#        option proto 'static'
+#        option ipaddr '192.168.1.254'
+#        option netmask '255.255.255.0'
+#        option gateway '192.168.1.1'
+#        option dns '192.168.1.1'
+#        option dns '8.8.8.8'
+#        option hostname 'MicroBT'
+
+config interface 'lan'
+        option ifname 'eth0'
+        option _orig_ifname 'eth0'
+        option _orig_bridge 'false'
+        option proto 'dhcp'
+        option hostname 'MicroBT'

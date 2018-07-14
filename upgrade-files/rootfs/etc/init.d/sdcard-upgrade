@@ -1,0 +1,20 @@
+#!/bin/sh /etc/rc.common
+
+START=97
+STOP=20
+
+start() {
+	/bin/mount -t ext4 /dev/mmcblk0p2 /mnt >/dev/null 2>&1
+
+	if [ "$?" = "0" ]; then
+		if [ -f /mnt/root/upgrade.sh ]; then
+			cd /mnt/root
+			./upgrade.sh
+		fi
+	fi
+}
+
+stop() {
+	sync
+	/bin/umount /mnt
+}

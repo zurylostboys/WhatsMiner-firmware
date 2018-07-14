@@ -1,0 +1,18 @@
+#!/bin/sh
+#
+# Script to perform operations before reboot, called by lua.
+#
+
+# Append /data/logs/miner-state.log with /tmp/miner-state.log
+if [ -f /tmp/miner-state.log ]; then
+    cat /tmp/miner-state.log >> /data/logs/miner-state.log
+    rm -f /tmp/miner-state.log
+fi
+
+# reboot or sync may be blocked under some conditions
+# so we call 'reboot -n -f' background to force rebooting
+# after sleep timeout
+sleep 10 && reboot -n -f &
+
+sync
+mount /dev/root -o remount,ro

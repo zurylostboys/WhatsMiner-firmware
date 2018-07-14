@@ -1,0 +1,7 @@
+
+config power 'default'
+    option miner_type 'M0'
+    list 'power_limit' '1:000004:2:552:552:552'
+    list 'power_limit' '2:000105:2:576:576:576'
+    list 'power_limit' '3:000106:2:576:576:576'
+

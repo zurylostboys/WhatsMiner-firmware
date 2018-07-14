@@ -1,0 +1,6 @@
+
+config fan 'default'
+    option miner_type 'COMMON'
+    # The first fan should be air-in
+    list 'params' '3:0:680:60:4050:100:6000:30'
+    list 'params' '3:0:680:60:4050:100:6000:30'

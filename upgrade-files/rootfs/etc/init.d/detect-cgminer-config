@@ -1,0 +1,70 @@
+#!/bin/sh /etc/rc.common
+
+START=80
+STOP=20
+
+start() {
+    force_miner_type=$1
+
+    /usr/bin/detect-eeprom-data # detect-eeprom-data will output data to /tmp/eeprom_data_out if eeprom data are valid.
+    source /usr/bin/miner-detect-common $force_miner_type
+
+    logger "detect-cgminer-config: miner_type=$miner_type hash_board_version=$hash_board_version"
+
+    if [ "$miner_type" = "unknown" ]; then
+        exit 1;
+    fi
+
+    if [ -f /etc/config/$CGMINERFILE ]; then
+        DIFF=`cmp /etc/config/$CGMINERFILE /etc/config/cgminer`
+        if [ ! -f /etc/config/cgminer -o "$DIFF" != "" ]; then
+            cd /etc/config/
+            rm -f cgminer
+            ln -s $CGMINERFILE cgminer
+            sync
+            cd -
+            logger "detect-cgminer-config: linking /etc/config/cgminer to /etc/config/$CGMINERFILE"
+        else
+            logger "detect-cgminer-config: /etc/config/cgminer --> /etc/config/$CGMINERFILE remains unchanged"
+        fi
+    fi
+    if [ -f /etc/config/$CGMINERDEFAULTFILE ]; then
+        DIFF=`cmp /etc/config/$CGMINERDEFAULTFILE /etc/config/cgminer.default`
+        if [ ! -f /etc/config/cgminer.default -o "$DIFF" != "" ]; then
+            cd /etc/config/
+            rm -f cgminer.default
+            ln -s $CGMINERDEFAULTFILE cgminer.default
+            sync
+            cd -
+            logger "detect-cgminer-config: linking /etc/config/cgminer.default to /etc/config/$CGMINERDEFAULTFILE"
+        else
+            logger "detect-cgminer-config: /etc/config/cgminer.default --> /etc/config/$CGMINERDEFAULTFILE remains unchanged"
+        fi
+    fi
+    if [ -f /etc/config/$POWERSFILE ]; then
+        DIFF=`cmp /etc/config/$POWERSFILE /etc/config/powers`
+        if [ ! -f /etc/config/powers -o "$DIFF" != "" ]; then
+            cd /etc/config/
+            rm -f powers
+            ln -s $POWERSFILE powers
+            sync
+            cd -
+            logger "detect-cgminer-config: linking /etc/config/powers to /etc/config/$POWERSFILE"
+        else
+            logger "detect-cgminer-config: /etc/config/powers --> /etc/config/$POWERSFILE remains unchanged"
+        fi
+    fi
+    if [ -f /etc/config/$FANSFILE ]; then
+        DIFF=`cmp /etc/config/$FANSFILE /etc/config/fans`
+        if [ ! -f /etc/config/fans -o "$DIFF" != "" ]; then
+            cd /etc/config/
+            rm -f fans
+            ln -s $FANSFILE fans
+            sync
+            cd -
+            logger "detect-cgminer-config: linking /etc/config/fans to /etc/config/$FANSFILE"
+        else
+            logger "detect-cgminer-config: /etc/config/fans --> /etc/config/$FANSFILE remains unchanged"
+        fi
+    fi
+}

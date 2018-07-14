@@ -1,0 +1,21 @@
+#!/bin/sh
+#
+# Auto detect chip_num
+#
+
+isDigital() {
+    if [ "$1" -ge 0 ] 2>/dev/null ;then
+        echo "yes"
+    else
+        echo "no"
+    fi
+}
+
+source /usr/bin/miner-detect-common ""
+
+if [ -f /etc/config/chipnum ]; then
+    val=`cat /etc/config/chipnum`
+    if [ $(isDigital $val) = yes ]; then
+       chip_num=$val
+    fi
+fi

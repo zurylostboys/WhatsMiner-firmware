@@ -1,0 +1,26 @@
+#!/bin/sh
+#
+# Script to detect miner info. Info will be output to file /tmp/lua-version.
+# Called and used by /usr/bin/lua/luci/version.lua.
+#
+
+OUTPUT_FILENAME="/tmp/lua-version"
+
+if [ -f $OUTPUT_FILENAME ]; then
+    exit
+fi
+
+force_miner_type=$1
+
+# Detect miner info
+source /usr/bin/miner-detect-common $force_miner_type
+
+# Output info
+echo "MODEL_NAME='$miner_type'" > $OUTPUT_FILENAME
+echo "CONTROL_BOARD_TYPE='$control_board_type-$control_board_version'" >> $OUTPUT_FILENAME
+echo "HASH_BOARD_TYPE='$hash_board_version'" >> $OUTPUT_FILENAME
+echo "POWER_TYPE='$power_type'" >> $OUTPUT_FILENAME
+
+if [ "$pcb_data" != "" ]; then
+    echo "PCB_DATA='$pcb_data'" >> $OUTPUT_FILENAME
+fi

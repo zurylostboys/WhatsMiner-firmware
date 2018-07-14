@@ -1,0 +1,22 @@
+#!/bin/sh /etc/rc.common
+
+START=90
+
+DAEMON=system-monitor
+PIDFILE=/var/run/$DAEMON.pid
+
+start() {
+    start-stop-daemon -S -x $DAEMON -p $PIDFILE -m -b
+}
+
+stop() {
+    if pidof $DAEMON > /dev/null; then  
+        killall -9 $DAEMON > /dev/null  
+        rm -rf $PIDFILE  
+    fi
+}
+
+restart() {
+    stop
+    start
+}

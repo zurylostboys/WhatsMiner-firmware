@@ -1,0 +1,145 @@
+#!/bin/sh /etc/rc.common
+START=99
+
+APP=cgminer
+PID_FILE=/var/run/$APP.pid
+
+
+start() {
+	local _pool1url
+	local _pool1user
+	local _pool1pw
+
+	local _pool2url
+	local _pool2user
+	local _pool2pw
+
+	local _pool3url
+	local _pool3user
+	local _pool3pw
+
+	local _api_listen
+	local _api_network
+	local _api_allow
+	local _mo
+
+	local _ntp_enable
+	local _ntp_pools
+
+	local _powers_limit
+
+	config_load pools
+
+	config_get _pool1url default pool1url
+	config_get _pool1user default pool1user
+	config_get _pool1pw default pool1pw
+	config_get _pool2url default pool2url
+	config_get _pool2user default pool2user
+	config_get _pool2pw default pool2pw
+	config_get _pool3url default pool3url
+	config_get _pool3user default pool3user
+	config_get _pool3pw default pool3pw
+
+	config_get _ntp_enable default ntp_enable
+	config_get _ntp_pools default ntp_pools
+
+	config_load cgminer
+	config_get _temperature_limit default temperature_limit
+	config_get _chip_test_start_freq default chip_test_start_freq
+	config_get _work_interval default work_interval
+	config_get _temp_chips default temp_chips
+	config_get _temp_sensors_per_chip default temp_sensors_per_chip
+	config_get _upfreq_pass_cores_percent default upfreq_pass_cores_percent
+	config_get _upfreq_pass_chips_percent default upfreq_pass_chips_percent
+	config_get _pre_heat_temp default pre_heat_temp
+	config_get _pre_heat_end_freq default pre_heat_end_freq
+	config_get _pre_heat_timeout default pre_heat_timeout
+
+	config_get _bitmicro_options default bitmicro_options
+	config_get _chip_column_num default chip_column_num
+
+	config_get _api_listen default api_listen
+	config_get _api_network default api_network
+	config_get _api_allow default api_allow
+	config_get _mo default more_options
+
+	if [ "$_pool1url" != "" -a "$_pool1user" != "" -a "$_pool1pw" != "" ]; then
+		POOL1="-o $_pool1url -O $_pool1user:$_pool1pw"
+	fi
+	if [ "$_pool1url" != "" -a "$_pool1user" != "" -a "$_pool1pw" == "" ]; then
+		POOL1="-o $_pool1url -O $_pool1user"
+	fi
+    
+	if [ "$_pool2url" != "" -a "$_pool2user" != "" -a "$_pool2pw" != "" ]; then
+		POOL2="-o $_pool2url -O $_pool2user:$_pool2pw"
+	fi
+	if [ "$_pool2url" != "" -a "$_pool2user" != "" -a "$_pool2pw" == "" ]; then
+		POOL2="-o $_pool2url -O $_pool2user"
+	fi
+    
+	if [ "$_pool3url" != "" -a "$_pool3user" != "" -a "$_pool3pw" != "" ]; then
+		POOL3="-o $_pool3url -O $_pool3user:$_pool3pw"
+	fi
+	if [ "$_pool3url" != "" -a "$_pool3user" != "" -a "$_pool3pw" == "" ]; then
+		POOL3="-o $_pool3url -O $_pool3user"
+	fi
+
+	if [ "$_mo" != "" ]; then
+		VOLT_OFFSET="--bitmicro-more $_mo"
+	fi
+
+	if [ "$_api_listen" == "true" ]; then
+		API_LISTEN="--api-listen"
+	else
+		API_LISTEN=""
+	fi 
+
+	if [ "$_api_network" == "true" ]; then
+		API_NETWORK="--api-network"
+	else
+		API_NETWORK=""
+	fi 
+
+	_powers_limit=`uci -d '-' get powers.default.power_limit`
+	_fans_params=`uci -d '-' get fans.default.params`
+	_temperature_overheat_limit=`cat /etc/config/temp_overheat_limit`
+	
+	if [ "$CPUINFO_SUN8I" != "" ]; then
+		_bitmicro_devs="/dev/ttyS1:/dev/ttyS2:/dev/ttyS3"
+	else
+		_bitmicro_devs="/dev/ttyS2:/dev/ttyS3:/dev/ttyS4"
+	fi
+
+	CHIP_OPTIONS="$_bitmicro_options:$_chip_column_num:$_chip_test_start_freq:$_work_interval"
+	ENV_LIMIT_OPTIONS="$_temperature_limit:$_temperature_overheat_limit"
+	TEMP_SENSOR_OPTIONS="$_temp_chips:$_temp_sensors_per_chip"
+	UPFREQ_OPTIONS="$_upfreq_pass_cores_percent:$_upfreq_pass_chips_percent"
+	PRE_HEAT_OPTIONS="$_pre_heat_temp:$_pre_heat_end_freq:$_pre_heat_timeout"
+	POWERS_LIMIT_OPTIONS="$_powers_limit"
+	BITMICRO_OPTIONS=" --bitmicro-options $CHIP_OPTIONS:$ENV_LIMIT_OPTIONS:$TEMP_SENSOR_OPTIONS:$UPFREQ_OPTIONS:$PRE_HEAT_OPTIONS:$POWERS_LIMIT_OPTIONS \
+		--bitmicro-devs $_bitmicro_devs --fans-params $_fans_params"
+	PARAMS="$BITMICRO_OPTIONS $POOL1 $POOL2 $POOL3 $API_LISTEN $API_NETWORK --api-allow $_api_allow --syslog"
+	echo $PARAMS
+
+	# _ntp_enable: openwrt, asia, global, disable
+	if [ ! -f /tmp/cgminer-ntpd-done -a "$_ntp_enable" != "disable" ]; then
+		NTP_POOL=$_ntp_pools
+		if [ "$NTP_POOL" = "" ]; then
+			NTP_POOL="-p 0.pool.ntp.org -p 0.asia.pool.ntp.org -p 0.openwrt.pool.ntp.org -p 0.cn.pool.ntp.org"
+		fi
+		while [ "$NTPD_RET" != "0" ]; do
+			ntpd -d -n -q -N ${NTP_POOL}
+			NTPD_RET=$?
+		done
+
+		touch /tmp/cgminer-ntpd-done
+	fi
+
+	sleep 2
+	start-stop-daemon -S -x $APP -p $PID_FILE -m -b -- $PARAMS
+}
+
+stop() {
+	start-stop-daemon -K -n $APP -p $PID_FILE -s TERM
+	sleep 2
+}
