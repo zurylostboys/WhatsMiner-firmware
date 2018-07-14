@@ -1,0 +1,450 @@
+#!/bin/sh
+
+# This file is for cron job
+
+# Functions definitions
+reset_board0() {
+    if [ "$isH3Platform" = true ]; then
+        echo 99 > /sys/class/gpio/export
+        echo out > /sys/class/gpio/gpio99/direction
+        echo 0 > /sys/class/gpio/gpio99/value
+    else
+        echo 960 > /sys/class/gpio/export
+        echo out > /sys/class/gpio/gpio960/direction
+        echo 0 > /sys/class/gpio/gpio960/value
+    fi
+}
+
+reset_board1() {
+    if [ "$isH3Platform" = true ]; then
+        echo 100 > /sys/class/gpio/export
+        echo out > /sys/class/gpio/gpio100/direction
+        echo 0 > /sys/class/gpio/gpio100/value
+    else
+        echo 962 > /sys/class/gpio/export
+        echo out > /sys/class/gpio/gpio962/direction
+        echo 0 > /sys/class/gpio/gpio962/value
+    fi
+}
+
+reset_board2() {
+    if [ "$isH3Platform" = true ]; then
+        echo 101 > /sys/class/gpio/export
+        echo out > /sys/class/gpio/gpio101/direction
+        echo 0 > /sys/class/gpio/gpio101/value
+    else
+        echo 964 > /sys/class/gpio/export
+        echo out > /sys/class/gpio/gpio964/direction
+        echo 0 > /sys/class/gpio/gpio964/value
+    fi
+}
+
+reset_board_by_slot_id() {
+    # Reset by slot id
+    if [ "$1" = "0" ]; then
+        if [ ! -f /tmp/cgminer-reset-board0 ]; then
+                echo "`date`|E004|Reset hash board|cgminer-monitor|SM-0 HS < 1.5T" >> /root/.events/event-reset-hash-board
+        fi
+        reset_board0
+        touch /tmp/cgminer-reset-board0
+    fi
+    if [ "$1" = "1" ]; then
+        if [ ! -f /tmp/cgminer-reset-board1 ]; then
+                echo "`date`|E004|Reset hash board|cgminer-monitor|SM-1 HS < 1.5T" >> /root/.events/event-reset-hash-board
+        fi
+        reset_board1
+        touch /tmp/cgminer-reset-board1
+    fi
+    if [ "$1" = "2" ]; then
+        if [ ! -f /tmp/cgminer-reset-board2 ]; then
+                echo "`date`|E004|Reset hash board|cgminer-monitor|SM-2 HS < 1.5T" >> /root/.events/event-reset-hash-board
+        fi
+        reset_board2
+        touch /tmp/cgminer-reset-board2
+    fi
+}
+
+find_field() {
+    OLD_IFS="$IFS" 
+    IFS="," 
+    for s in $1
+    do 
+        v=`echo "$s" | grep "$2"`
+        if [ "$v" != "" ]; then
+            IFS="$OLD_IFS"
+            echo "$v"
+            break
+        fi
+    done
+    IFS="$OLD_IFS"
+    echo ""
+}
+
+reboot_control_board() {
+    sleep 5 && reboot -n -f &
+    reboot
+}
+
+kill_cgminer() {
+    killall -s 9 cgminer
+    sleep 2
+
+    C=`pidof cgminer | wc -w`
+    if [ "$C" != "0" ]; then
+        logger "`date`|E012|Reboot control board|cgminer-monitor|cgminer may be zombie or in uninterruptible sleep"
+        echo "`date`|E012|Reboot control board|cgminer-monitor|cgminer may be zombie or in uninterruptible sleep" >> /root/.events/event-reboot-control-board
+
+        reboot_control_board
+    fi
+}
+
+miner_thread_count() {
+    cgminer_pid=`pidof cgminer`
+    thread_count=`grep Miner /proc/$cgminer_pid/task/*/comm | wc -w`
+    echo $thread_count
+}
+
+pools_active() {
+    is_active=`cgminer-api -o pools  | grep 'Stratum Active=true'`
+    if [ "$is_active" = "" ]; then
+        echo false
+    else
+        echo true
+    fi
+}
+
+get_max_chip_model_effective_count() {
+    local max=0
+    local count
+
+    for board in "$ASC0" "$ASC1" "$ASC2"
+    do
+        field=`find_field "$board" "Effective Chips"`
+        count=`echo $field | cut -d "=" -f2`
+        if [ "$count" -gt "$max" ]; then
+            max=$count
+        fi
+    done
+    return $max
+}
+
+cgminer_api_summary_accepted() {
+    local cgminer_api_summary=`cgminer-api -o summary`
+    local summary=`echo $cgminer_api_summary | cut -d "|" -f2`
+    local accepted_field=`find_field "$summary" "Accepted"`
+    local accepted=`echo $accepted_field | cut -d "=" -f2`
+    echo $accepted
+}
+
+need_restart_cgminer_with_alternative_configs() {
+    local need_restart_cgminer=0
+
+    if [ ! -f /tmp/alternative_miner_type ]; then
+        return 0
+    fi
+
+    local alternative_miner_chip_num=`cat /tmp/alternative_miner_chip_num`
+    local bitmicro_options=`uci get cgminer.default.bitmicro_options`
+    local current_miner_chip_num=`echo $bitmicro_options|cut -d ":" -f3`
+    get_max_chip_model_effective_count
+    local max_effective_chip_count=$?
+
+    # Maybe M3(66 chips) misjudges to M2(38 chips)
+    if [ "$max_effective_chip_count" -eq "$current_miner_chip_num" ] &&
+        [ "$max_effective_chip_count" -lt "$alternative_miner_chip_num" ] &&
+        [ "$(cgminer_api_summary_accepted)" -eq 0 ]; then
+            logger "Miner type may be wrong, as accepted work is 0, detect again after 60s"
+            sleep 60
+            if [ "$(cgminer_api_summary_accepted)" -eq 0 ]; then
+                need_restart_cgminer=1
+            fi
+            logger "Accepted work:$(cgminer_api_summary_accepted)"
+    fi
+
+    # Maybe M1s(60 chips) misjudges to M1(66 chips)
+    if [ "$max_effective_chip_count" -lt "$current_miner_chip_num" ] &&
+        [ "$max_effective_chip_count" -eq "$alternative_miner_chip_num" ]; then
+            need_restart_cgminer=1
+    fi
+    logger "max_effective_chip_count:$max_effective_chip_count alternative_miner_chip_num:$alternative_miner_chip_num current_miner_chip_num:$current_miner_chip_num" 
+    return $need_restart_cgminer
+}
+
+restart_cgminer_with_alternative_configs() {
+    local miner_type=`cat /tmp/alternative_miner_type`
+    logger "Restart cgminer using miner type $miner_type, as current miner type is probably wrong."
+    /etc/init.d/detect-cgminer-config start "$miner_type"
+ 
+    rm /tmp/miner-info
+    detect-miner-info "$miner_type"
+    rm /tmp/lua-version
+    lua-detect-version "$miner_type"
+
+    /etc/init.d/cgminer restart
+}
+
+
+isH3Platform=false  
+
+. /etc/cpuinfo_sun8i
+if [ "$CPUINFO_SUN8I" != "" ]; then
+    isH3Platform=true
+fi
+
+# Make sure there is only one cgminer running
+C=`pidof cgminer | wc -w`
+if [ "$C" = "0" ]; then
+    exit 0;
+fi
+if [ "$C" != "1" ]; then
+    logger "Kill all cgminers as there are more than one cgminer processes"
+    kill_cgminer
+    /etc/init.d/cgminer start
+    exit 0;
+fi
+
+# Make sure cgminer started
+if [ ! -f /tmp/cgminer-ntpd-done ]; then
+    exit 0;
+fi
+
+# For events logging
+mkdir -p /root/.events
+
+# Make sure cgminer still active
+cpu_ratio=`top -n1 | grep "cgminer --bitmicro-options" | grep -v grep | awk '{print $8}' | sed 's/%//g'`
+if [ $cpu_ratio -eq 0 ]; then
+    # Check twice
+    cpu_ratio=`top -d5 -n2 | grep "cgminer --bitmicro-options" | grep -v grep | awk '{print $8}' | sed 's/%//g' | sed -n '2p'`
+    if [ $cpu_ratio -eq 0 ]; then
+        kill_cgminer
+        /etc/init.d/cgminer start
+
+        logger "cgminer-monitor cpu ratio=0%, cgminer restarted at `date`"
+        echo "cgminer-monitor cpu ratio=0%, cgminer restarted at `date`" >> /tmp/cgminer-restart.log
+        echo "`date`|E008|Restart cgminer|cgminer-monitor|CPU percent is 0" >> /root/.events/event-restart-cgminer
+        exit 0;
+    fi
+fi
+
+if [ $(miner_thread_count) = 0 ]; then
+    sleep 5
+    if [ $(miner_thread_count) = 0 ]; then
+        logger "cgminer-monitor Miner thread isn't present, cgminer restarted at `date`"
+
+        kill_cgminer
+        /etc/init.d/cgminer start
+    fi
+fi
+
+if [ $(pools_active) = false ]; then
+    logger "Pools aren't active, waiting..."
+    exit 0;
+fi
+
+# API edevs
+cgminer_api_edevs=`/usr/bin/cgminer-api -o edevs`
+if [ "$?" != "0" ]; then
+    exit 0;
+fi
+
+STATUS=`echo $cgminer_api_edevs | cut -d "|" -f1`
+ASC0=`echo $cgminer_api_edevs | cut -d "|" -f2`
+ASC1=`echo $cgminer_api_edevs | cut -d "|" -f3`
+ASC2=`echo $cgminer_api_edevs | cut -d "|" -f4`
+
+need_restart_cgminer_with_alternative_configs
+if [ $? -eq 1 ]; then
+	restart_cgminer_with_alternative_configs
+fi
+
+check_upfreq_complete() {
+    # Get upfreq_complete flag for each hash board
+    asc0_field=`find_field "$ASC0" "Upfreq Complete"`
+    asc1_field=`find_field "$ASC1" "Upfreq Complete"`
+    asc2_field=`find_field "$ASC2" "Upfreq Complete"`
+
+    upfreq_complete_0=`echo $asc0_field | cut -d "=" -f2`
+    upfreq_complete_1=`echo $asc1_field | cut -d "=" -f2`
+    upfreq_complete_2=`echo $asc2_field | cut -d "=" -f2`
+
+    # Skip checking empty slot
+    if [ "$upfreq_complete_0" = "" ]; then
+        upfreq_complete_0=1
+    fi
+    if [ "$upfreq_complete_1" = "" ]; then
+        upfreq_complete_1=1
+    fi
+    if [ "$upfreq_complete_2" = "" ]; then
+        upfreq_complete_2=1
+    fi
+
+    #
+    # Make sure cgminer upfreq completed
+    #
+    if [ $upfreq_complete_0 -lt 1 -o $upfreq_complete_1 -lt 1 -o $upfreq_complete_2 -lt 1 ]; then
+        logger "cgminer-monitor: cgminer upfreq not completed (sm0=$upfreq_complete_0, sm1=$upfreq_complete_1, sm2=$upfreq_complete_2)"
+        exit 0;
+    else
+        if [ ! -f /tmp/cgminer-upfreq-completed ]; then
+            # To make sure MHS stable, skip one time after upfreq completed
+            logger "cgminer-monitor: cgminer upfreq completed"
+            touch /tmp/cgminer-upfreq-completed
+            exit 0;
+        fi
+    fi
+}
+
+#
+# cgminer active, check MHS
+#
+if [ -f /etc/cgminer_monitor_threshold_high ]; then
+    MHS_T_H=`cat /etc/cgminer_monitor_threshold_high`
+else
+    MHS_T_H=2400000
+fi
+if [ -f /etc/cgminer_monitor_threshold_low ]; then
+    MHS_T_L=`cat /etc/cgminer_monitor_threshold_low`
+else
+    MHS_T_L=1500000
+fi
+
+check_upfreq_complete
+
+asc0_slot=`find_field "$ASC0" "Slot"`
+asc1_slot=`find_field "$ASC1" "Slot"`
+asc2_slot=`find_field "$ASC2" "Slot"`
+#echo "asc0_slot=$asc0_slot | asc1_slot=$asc1_slot | asc2_slot=$asc2_slot"
+
+asc0_slot_id=`echo $asc0_slot | cut -d "=" -f2`
+asc1_slot_id=`echo $asc1_slot | cut -d "=" -f2`
+asc2_slot_id=`echo $asc2_slot | cut -d "=" -f2`
+
+asc0_mhs_av=`find_field "$ASC0" "MHS av"`
+asc1_mhs_av=`find_field "$ASC1" "MHS av"`
+asc2_mhs_av=`find_field "$ASC2" "MHS av"`
+
+asc0_mhs_av_s=`echo $asc0_mhs_av | cut -d "=" -f2`
+asc1_mhs_av_s=`echo $asc1_mhs_av | cut -d "=" -f2`
+asc2_mhs_av_s=`echo $asc2_mhs_av | cut -d "=" -f2`
+
+asc0_mhs_av_v=`echo "$asc0_mhs_av_s" | awk '{print int($0)}'`
+asc1_mhs_av_v=`echo "$asc1_mhs_av_s" | awk '{print int($0)}'`
+asc2_mhs_av_v=`echo "$asc2_mhs_av_s" | awk '{print int($0)}'`
+
+logger "cgminer-monitor: asc0_slot_id=$asc0_slot_id | asc1_slot_id=$asc1_slot_id | asc2_slot_id=$asc2_slot_id"
+logger "cgminer-monitor: asc0_mhs_av_v=$asc0_mhs_av_v, asc1_mhs_av_v=$asc1_mhs_av_v, asc2_mhs_av_v=$asc2_mhs_av_v"
+
+# Set a false mhs_av_v to skip checking below situations
+if [ "$ASC0" = "" -a $asc0_mhs_av_v -eq 0 ]; then
+    logger "cgminer-monitor: skip checking slot-$asc0_slot_id"
+    asc0_mhs_av_v=$MHS_T_H
+fi
+if [ "$ASC1" = "" -a $asc1_mhs_av_v -eq 0 ]; then
+    logger "cgminer-monitor: skip checking slot-$asc1_slot_id"
+    asc1_mhs_av_v=$MHS_T_H
+fi
+if [ "$ASC2" = "" -a $asc2_mhs_av_v -eq 0 ]; then
+    logger "cgminer-monitor: skip checking slot-$asc2_slot_id"
+    asc2_mhs_av_v=$MHS_T_H
+fi
+#echo "asc0_mhs_av_v=$asc0_mhs_av_v, asc1_mhs_av_v=$asc1_mhs_av_v, asc2_mhs_av_v=$asc2_mhs_av_v | MHS_T_H=$MHS_T_H, MHS_T_L=$MHS_T_L"
+
+# if mhs < MHS_T_H (2.4T), restart cgminer
+if [ $asc0_mhs_av_v -lt $MHS_T_H -o $asc1_mhs_av_v -lt $MHS_T_H -o $asc2_mhs_av_v -lt $MHS_T_H ]; then
+    # If mhs < MHS_T_L (1.5T), check whether restarted 3 times. If yes, reset the board.
+    if [ $asc0_mhs_av_v -lt $MHS_T_L -o $asc1_mhs_av_v -lt $MHS_T_L -o $asc2_mhs_av_v -lt $MHS_T_L ]; then
+	    need_reboot_hashboard=1
+        for i in 0 1 2
+        do
+            if [ ! -f /tmp/cgminer-restart-time$i ]; then
+                need_reboot_hashboard=0
+		        break
+            fi
+        done
+        if [ $need_reboot_hashboard -eq 1 ]; then
+	        # Try to reboot system one time before reset the hashboard
+            if [ ! -f /root/.cgminer-monitor-reboot-system ]; then
+                echo "cgminer-monitor $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reboot system at `date`" >> /root/.cgminer-monitor-reboot-system
+                echo "`date`|E002|Reboot control board|cgminer-monitor|HS < 2.4T and cgminer restarted x3" >> /root/.events/event-reboot-control-board
+                reboot_control_board
+                sleep 5
+		        exit 0;
+	        fi
+            #
+            # Reset board which mhs < MHS_T_L
+            # ASC0
+            #
+            if [ $asc0_mhs_av_v -lt $MHS_T_L ]; then
+                # Reset by the real board id
+                if [ "$asc0_slot_id" != "" ]; then
+                    reset_board_by_slot_id $asc0_slot_id
+                    echo "cgminer-monitor slot-$asc0_slot_id: $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reset board $asc0_slot_id at `date`" >> /tmp/cgminer-restart.log
+                    logger "cgminer-monitor slot-$asc0_slot_id: $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reset board $asc0_slot_id at `date`"
+                fi
+            fi
+
+            #
+            # Reset board which mhs < MHS_T_L
+            # ASC1
+            #
+            if [ $asc1_mhs_av_v -lt $MHS_T_L ]; then
+                # Reset by the real board id
+                if [ "$asc1_slot_id" != "" ]; then
+                    reset_board_by_slot_id $asc1_slot_id
+                    echo "cgminer-monitor slot-$asc1_slot_id: $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reset board $asc1_slot_id at `date`" >> /tmp/cgminer-restart.log
+                    logger "cgminer-monitor slot-$asc1_slot_id: $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reset board $asc1_slot_id at `date`"
+                fi
+            fi
+
+            #
+            # Reset board which mhs < MHS_T_L
+            # ASC2
+            #
+            if [ $asc2_mhs_av_v -lt $MHS_T_L ]; then
+                # Reset by the real board id
+                if [ "$asc2_slot_id" != "" ]; then
+                    reset_board_by_slot_id $asc2_slot_id
+                    echo "cgminer-monitor slot-$asc2_slot_id: $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reset board $asc2_slot_id at `date`" >> /tmp/cgminer-restart.log
+                    logger "cgminer-monitor slot-$asc2_slot_id: $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, reset board $asc2_slot_id at `date`"
+                fi
+            fi
+        fi
+    fi
+
+    # Require to restart cgminer x3
+    for i in 0 1 2 
+    do
+        if [ ! -f /tmp/cgminer-restart-time$i ]; then
+            echo "cgminer-monitor $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, cgminer restarted $i at `date`" >> /tmp/cgminer-restart.log
+            logger "cgminer-monitor $asc0_mhs_av_v|$asc1_mhs_av_v|$asc2_mhs_av_v, $MHS_T_H|$MHS_T_L, cgminer restarted $i at `date`"
+
+            kill_cgminer
+            /etc/init.d/cgminer start
+            touch /tmp/cgminer-restart-time$i
+
+            echo "`date`|E006|Restart cgminer|cgminer-monitor|HS < 2.4T" >> /root/.events/event-restart-cgminer
+            exit 0;
+        fi
+    done
+
+    exit 0
+fi
+
+MHS_NORMAL=`expr $MHS_T_H \* 125 / 100`
+if [ $asc0_mhs_av_v -gt $MHS_NORMAL -o "$ASC0" = "" ] && [ $asc1_mhs_av_v -gt $MHS_NORMAL -o "$ASC1" = "" ] && [ $asc2_mhs_av_v -gt $MHS_NORMAL -o "$ASC2" = "" ]; then
+    # Cgminer running normally, reset stats
+    for i in 0 1 2 
+    do
+        if [ -f /tmp/cgminer-restart-time$i ]; then
+            logger "Remove /tmp/cgminer-restart-time$i as cgminer running normally"
+            rm -f /tmp/cgminer-restart-time$i
+        fi
+        if [ -f /tmp/cgminer-reset-board$i ]; then
+            rm -f /tmp/cgminer-reset-board$i
+        fi
+    done
+    if [ -f /root/.cgminer-monitor-reboot-system ]; then
+        rm -f /root/.cgminer-monitor-reboot-system
+    fi
+fi
