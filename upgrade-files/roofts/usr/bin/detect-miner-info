@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Script to detect miner info. Info will be output to file /tmp/miner-info. (Used by remote-daemon)
+#
+# Output format:
+#
+# [MINER_NAME]-[MINER_VERSION]-[CONTROL_BOARD_TYPE]-[CONTROL_BOARD_VERSION]-[HASH_BOARD_VERSION]-[POWER_VERSION]-[FIRMWARE_VERSION]
+#
+# e.g.
+#
+# WhatsMiner-M1-ZYNQ-CB12-ALB10-P3-20170705.10.1
+#
+
+# Output info
+OUTPUT_FILENAME="/tmp/miner-info"
+
+show_miner_info() {
+    echo -n "Detected Miner Info: "
+    cat $OUTPUT_FILENAME
+    echo ""
+}
+
+if [ -f $OUTPUT_FILENAME ]; then
+    show_miner_info
+    exit 1
+fi
+
+force_miner_type=$1
+
+# Detect miner info
+source /usr/bin/miner-detect-common $force_miner_type
+
+# Output to $OUTPUT_FILENAME
+echo -n "WhatsMiner" > $OUTPUT_FILENAME
+echo -n "-$miner_type" >> $OUTPUT_FILENAME
+echo -n "-$control_board_type" >> $OUTPUT_FILENAME
+echo -n "-$control_board_version" >> $OUTPUT_FILENAME
+echo -n "-$hash_board_version" >> $OUTPUT_FILENAME
+echo -n "-$power_type" >> $OUTPUT_FILENAME
+echo -n "-$firmware_version" >> $OUTPUT_FILENAME
+
+show_miner_info

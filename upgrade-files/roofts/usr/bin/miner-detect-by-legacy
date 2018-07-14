@@ -1,0 +1,191 @@
+#!/bin/sh
+
+force_miner_type=$1
+
+#
+# Detect miner type and hash board version by legacy
+#
+if [ "$control_board_type" = "H3" ]; then
+    hwmon0_path="/sys/class/hwmon/hwmon1/device/"
+    hwmon1_path="/sys/class/hwmon/hwmon2/device/"
+    hwmon2_path="/sys/class/hwmon/hwmon3/device/"
+    hwmon4_path="/sys/class/hwmon/hwmon5/device/"
+
+    gpio_hotplug0_path="/sys/class/gpio/gpio15/value"
+    gpio_hotplug1_path="/sys/class/gpio/gpio7/value"
+    gpio_hotplug2_path="/sys/class/gpio/gpio8/value"
+    
+    gpio_en0_path="/sys/class/gpio/gpio96/value"
+    gpio_en1_path="/sys/class/gpio/gpio97/value"
+    gpio_en2_path="/sys/class/gpio/gpio98/value"
+
+    gpio_reset0_path="/sys/class/gpio/gpio99/value"
+    gpio_reset1_path="/sys/class/gpio/gpio100/value"
+    gpio_reset2_path="/sys/class/gpio/gpio101/value"
+
+    eeprom0_path="/sys/bus/i2c/devices/0-0050/eeprom"
+    eeprom1_path="/sys/bus/i2c/devices/0-0051/eeprom"
+    eeprom2_path="/sys/bus/i2c/devices/0-0052/eeprom"
+else
+    hwmon0_path="/sys/class/hwmon/hwmon0/"
+    hwmon1_path="/sys/class/hwmon/hwmon1/"
+    hwmon2_path="/sys/class/hwmon/hwmon2/"
+    hwmon4_path="/sys/class/hwmon/hwmon4/"
+
+    gpio_hotplug0_path="/sys/class/gpio/gpio961/value"
+    gpio_hotplug1_path="/sys/class/gpio/gpio963/value"
+    gpio_hotplug2_path="/sys/class/gpio/gpio965/value"
+
+    gpio_en0_path="/sys/class/gpio/gpio934/value"
+    gpio_en1_path="/sys/class/gpio/gpio939/value"
+    gpio_en2_path="/sys/class/gpio/gpio937/value"
+
+    gpio_reset0_path="/sys/class/gpio/gpio960/value"
+    gpio_reset1_path="/sys/class/gpio/gpio962/value"
+    gpio_reset2_path="/sys/class/gpio/gpio964/value"
+
+    eeprom0_path="/sys/bus/i2c/devices/0-0050/eeprom"
+    eeprom1_path="/sys/bus/i2c/devices/0-0051/eeprom"
+    eeprom2_path="/sys/bus/i2c/devices/0-0052/eeprom"
+fi
+
+# Detect hash board version and miner type
+if [ -f $hwmon0_path/name ]; then
+    hwmon0_name=`cat $hwmon0_path/name`
+fi
+if [ -f $hwmon1_path/name ]; then
+    hwmon1_name=`cat $hwmon1_path/name`
+fi
+if [ -f $hwmon2_path/name ]; then
+    hwmon2_name=`cat $hwmon2_path/name`
+fi
+
+gpio_hotplug0=`cat $gpio_hotplug0_path`
+gpio_hotplug1=`cat $gpio_hotplug1_path`
+gpio_hotplug2=`cat $gpio_hotplug2_path`
+
+gpio_en0=`cat $gpio_en0_path`
+gpio_en1=`cat $gpio_en1_path`
+gpio_en2=`cat $gpio_en2_path`
+
+if [ "$gpio_hotplug0" = "0" -a "$gpio_en0" = "1" ]; then
+    gpio_en_val0="1"
+else
+    gpio_en_val0="0"
+fi
+if [ "$gpio_hotplug1" = "0" -a "$gpio_en1" = "1" ]; then
+    gpio_en_val1="1"
+else
+    gpio_en_val1="0"
+fi
+if [ "$gpio_hotplug2" = "0" -a "$gpio_en2" = "1" ]; then
+    gpio_en_val2="1"
+else
+    gpio_en_val2="0"
+fi
+
+judge_gpio_en_high_more() {
+    high_cnt=0
+    plug_in_cnt=0
+    if [ "$gpio_en_val0" = "1" ]; then
+       high_cnt=`expr $high_cnt + 1`
+    fi
+    if [ "$gpio_en_val1" = "1" ]; then
+       high_cnt=`expr $high_cnt + 1`
+    fi
+    if [ "$gpio_en_val2" = "1" ]; then
+       high_cnt=`expr $high_cnt + 1`
+    fi
+
+    if [ "$gpio_hotplug0" = "0" ]; then
+        plug_in_cnt=`expr $plug_in_cnt + 1`
+    fi
+    if [ "$gpio_hotplug1" = "0" ]; then
+        plug_in_cnt=`expr $plug_in_cnt + 1`
+    fi
+    if [ "$gpio_hotplug2" = "0" ]; then
+        plug_in_cnt=`expr $plug_in_cnt + 1`
+    fi
+
+    if [ "$high_cnt" -ne 0 ] && [ "$high_cnt" -lt "$plug_in_cnt" ]; then
+        logger "Need alternative miner type as high_cnt=$high_cnt plug_in_cnt=$plug_in_cnt"
+        need_alternative=1
+    else
+        need_alternative=0
+    fi
+
+    if [ "$plug_in_cnt" -ge 2 ] && [ "$high_cnt" -ge 2 ]; then
+        return 1
+    fi
+    if [ "$plug_in_cnt" -eq 1 ] && [ "$high_cnt" -eq 1 ]; then
+        return 1
+    fi
+
+    return 0
+}
+
+judge_gpio_en_high_more
+is_gpio_en_high_more=$?
+
+if [ "$hwmon0_name" = "tmp421" -o "$hwmon1_name" = "tmp421" -o "$hwmon2_name" = "tmp421" ]; then
+    if [ "$is_gpio_en_high_more" -eq 1 ]; then
+        miner_type="M1"
+        hash_board_version="HB12"
+        alternative_miner_type="M1s"
+    else
+        miner_type="M1s"
+        hash_board_version="HB13"
+        alternative_miner_type="M1"
+    fi
+elif [ "$hwmon0_name" = "lm75" -o "$hwmon1_name" = "lm75" -o "$hwmon2_name" = "lm75" ]; then
+    dd if=$eeprom0_path bs=8 count=1 >/dev/null 2>&1;RET0=$?
+    dd if=$eeprom1_path bs=8 count=1 >/dev/null 2>&1;RET1=$?
+    dd if=$eeprom2_path bs=8 count=1 >/dev/null 2>&1;RET2=$?
+
+    if [ $RET0 = "0" -o $RET1 = "0" -o $RET2 = "0" ]; then
+        if [ "$is_gpio_en_high_more" -eq 1 ]; then
+            miner_type="M3"
+            hash_board_version="HB15"
+        else
+            miner_type="M3"
+            hash_board_version="HB12"
+        fi
+    else
+        if [ "$is_gpio_en_high_more" -eq 1 ]; then
+            miner_type="M2"
+            hash_board_version="ALB10"
+            alternative_miner_type="M3"
+        else
+            miner_type="M3"
+            hash_board_version="HB10"
+            alternative_miner_type="M2"
+        fi
+    fi
+else
+    if [ -f $hwmon0_path/name ]; then
+        hwmon0_name=`cat $hwmon0_path/name`
+    fi
+    if [ -f $hwmon2_path/name ]; then
+        hwmon1_name=`cat $hwmon2_path/name`
+    fi
+    if [ -f $hwmon4_path/name ]; then
+        hwmon2_name=`cat $hwmon4_path/name`
+    fi
+
+    if [ "$hwmon0_name" = "tmp423" -o "$hwmon1_name" = "tmp423" -o "$hwmon2_name" = "tmp423" ]; then
+        miner_type="M0"
+        hash_board_version="HB10"
+    else
+        hash_board_version="unknown"
+    fi
+fi
+
+if [ "$need_alternative" -ne 1 ] || [ "$force_miner_type" != "" ]; then
+    alternative_miner_type=""
+fi
+
+# Force miner type to specified type
+if [ "$force_miner_type" != "" ]; then
+    miner_type=$force_miner_type
+fi
+

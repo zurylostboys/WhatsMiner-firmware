@@ -1,0 +1,5 @@
+#!/bin/sh
+
+echo "`date`|E012|Reboot control board|Kernel|Cpu overheat" >> /root/.events/event-reboot-control-board
+sync
+
